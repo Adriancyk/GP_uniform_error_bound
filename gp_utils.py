@@ -45,6 +45,7 @@ class FitGP():
 
 def gradestj(fun, x0, eps=1e-3):
     N, E = x0.shape
+    
 
     xpme = np.tile(x0[:, :, np.newaxis], (1, 1, 2)) + np.eye(E)[:, :, np.newaxis] * np.ones((1, N, 2)) * eps
     xpme = xpme.transpose(2, 0, 1).reshape(E, E * N * 2)
