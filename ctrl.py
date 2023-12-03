@@ -1,7 +1,7 @@
 import torch
 
 def ctrlFeLi(t, x, p, reffun):
-    E = x.shape[0]
+    E = x.shape[1]
     xd = reffun(t)
     e = x - xd[0:E]
 

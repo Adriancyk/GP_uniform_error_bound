@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist
 from scipy.spatial import ConvexHull
 from scipy.io import loadmat
+from scipy.integrate import solve_ivp
 
 from gp_utils import *
 from dyn import *
@@ -23,6 +24,7 @@ sn = 0.1 # Observation noise
 E = 2 # State space dimension
 
 x0 = torch.tensor([0, 0]) # Initial state
+x0 = x0.unsqueeze(0) # dim 1 x E
 ref = lambda t: refGeneral(t, E+1, lambda tau: 2*torch.sin(tau)) # Reference trajectory
 
 pFeli_lam = torch.ones((E-1, 1))
@@ -36,7 +38,7 @@ def pdyn_f(x):
 
     return 1.0 - torch.sin(x[:, 0]).double() + 1.0 / (1.0 + torch.exp(-x[:, 1]).double())
 
-def pdyn_g():
+def pdyn_g(x):
     return 1.0
 
 
@@ -72,10 +74,10 @@ Xte = ndgridj(XteMin, XteMax, Ndte*torch.ones((E, 1)))
 Xte1 = Xte[:, 0]
 Xte2 = Xte[:, 1]
 
-# save testing points
-np.savetxt('Xte.csv', Xte, delimiter=',')
-np.savetxt('Xte1.csv', Xte1, delimiter=',')
-np.savetxt('Xte2.csv', Xte2, delimiter=',')
+# save testing points for checking
+# np.savetxt('Xte.csv', Xte, delimiter=',')
+# np.savetxt('Xte1.csv', Xte1, delimiter=',')
+# np.savetxt('Xte2.csv', Xte2, delimiter=',')
 
 Ntrajplot = 100
 
@@ -86,6 +88,7 @@ GP = FitGP(Xtr, Ytr, likelihood)
 
 print('Fitting GP...')
 model = GP.fit()
+model.eval()
 ls = model.covar_module.base_kernel.lengthscale.squeeze() # lengthscale
 sf = model.covar_module.outputscale # signal variance
 kfcn = model.covar_module
@@ -94,12 +97,9 @@ print('sf: ', sf)
 
 
 # ==================== #
+# Setup Lyapunov Function Stability Test
 print('Setup Lyapunov Function Stability Test...')
-# Lff = gradestj(pdyn_f, Xte)
-# np.savetxt('Lff.csv', Lff, delimiter=',')
-# Lff_sum = torch.norm(gradestj(pdyn_f, Xte)**2, dim=0)
-# Lff_sum_sq = torch.sqrt(torch.norm(gradestj(pdyn_f, Xte)**2, dim=0))
-# np.savetxt('Lff_sum_sq.csv', Lff_sum_sq, delimiter=',')
+doing_test = False
 Lf = torch.max(torch.sqrt(torch.norm(gradestj(pdyn_f, Xte)**2, dim=0)))
 Lk = torch.norm(sf**2*np.exp(-0.5)/ls)
 
@@ -127,51 +127,70 @@ def dddkdxidxpi(x, xp, i):
 
 r = max(pdist(Xte))
 Lfs = torch.zeros((E, 1))
+if doing_test:
+    for e in range(E):
+        maxk = max(ddkdxidxpi(Xte, Xte, e))
+        Lkds = torch.zeros(Nte, 1)
+        for nte in range(Nte):
+            Lkds[nte] = max(dddkdxidxpi(Xte, Xte[nte, :], e))
+        Lkd = max(Lkds)
+        Lfs[e] = torch.sqrt(2*torch.log(2*E/deltaL))*maxk + 12*torch.sqrt(torch.tensor(6*E))*max(maxk, torch.sqrt(r*Lkd))
+    # temp = kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr)
+    Lfh = torch.norm(Lfs)
+    Lnu = Lk*torch.sqrt(torch.tensor(Ntr))*torch.norm((kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*Ytr)
+    omega = torch.sqrt(2*tau*Lk*(1 + Ntr*torch.norm(kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*sf**2))
+    beta = 2*torch.log((1 + ((max(XteMax) - min(XteMin))/tau))**E/delta)
+    gamma = tau*(Lnu + Lfh) +torch.sqrt(beta)*omega
+    # Save parameters to txt file
+    with open('parameters.txt', 'w') as f:
+        f.write(f'Lfh: {Lfh}\n')
+        f.write(f'Lnu: {Lnu}\n')
+        f.write(f'omega: {omega}\n')
+        f.write(f'beta: {beta}\n')
+        f.write(f'gamma: {gamma}\n')
+else:
+    import ast
+    # Initialize a dictionary to store the parameters
+    parameters = {}
+    # Open the text file and read the parameters
+    with open('parameters.txt', 'r') as f:
+        for line in f:
+            # Split the line into name and value
+            name, value = line.strip().split(': ')
+            # Convert the value to a float and store it in the dictionary
+            value = ast.literal_eval(value.replace('tensor', ''))
+            parameters[name] = torch.tensor(value)
 
-for e in range(E):
-    maxk = max(ddkdxidxpi(Xte, Xte, e))
-    Lkds = torch.zeros(Nte, 1)
-    for nte in range(Nte):
-        Lkds[nte] = max(dddkdxidxpi(Xte, Xte[nte, :], e))
-    Lkd = max(Lkds)
-    Lfs[e] = torch.sqrt(2*torch.log(2*E/deltaL))*maxk + 12*torch.sqrt(torch.tensor(6*E))*max(maxk, torch.sqrt(r*Lkd))
+    # Now you can access the parameters like this:
+    Lfh = parameters['Lfh']
+    Lnu = parameters['Lnu']
+    omega = parameters['omega']
+    beta = parameters['beta']
+    gamma = parameters['gamma']
+    print("Precomputed parameters have been successfully loaded.")
 
-Lfh = torch.norm(Lfs)
-Lnu = Lk*torch.sqrt(torch.tensor(Ntr))*torch.norm((kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*Ytr)
-omega = torch.sqrt(2*tau*Lk*(1 + Ntr*torch.norm(kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*sf**2))
-beta = 2*torch.log((1 + ((max(XteMax) - min(XteMin))/tau))**E/delta)
-gamma = tau*(Lnu + Lfh) +torch.sqrt(beta)*omega
+class pFeli:
+    def __init__(self, pdyn_f, pdyn_g):
+        self.kc = 2
+        self.lam = torch.ones((E - 1, 1))
+        self.pdyn_f = pdyn_f
+        self.pdyn_g = pdyn_g
 
-# Save parameters to txt file
-with open('parameters.txt', 'w') as f:
-    f.write(f'Lfh: {Lfh}\n')
-    f.write(f'Lnu: {Lnu}\n')
-    f.write(f'omega: {omega}\n')
-    f.write(f'beta: {beta}\n')
-    f.write(f'gamma: {gamma}\n')
+pFeLi = pFeli(pdyn_f, pdyn_g)
 
-# class pFeli:
-#     def __init__(self, pdyn_f, pdyn_g):
-#         self.kc = 2
-#         self.lam = torch.ones((E - 1, 1))
-#         self.pdyn_f = pdyn_f
-#         self.pdyn_g = pdyn_g
+def lyapincr(X, r, beta, gamma, pFeLi, sigfun):
+    return torch.sqrt(torch.sum((X - r) ** 2, dim=1)) <= (torch.sqrt(beta) * sigfun(X) + gamma) / (pFeLi.kc * torch.sqrt(pFeLi.lam ** 2 + 1))
 
-# pFeLi = pFeli(pdyn_f, pdyn_g)
+def dyn(t, x):
+    return dynAffine(t, x, lambda t, x: ctrlFeLi(t, x, pFeLi, ref), pdyn_f, pdyn_g)
 
-# def lyapincr(X, r, beta, gamma, pFeLi, sigfun):
-#     return torch.sqrt(torch.sum((X - r) ** 2, dim=1)) <= (torch.sqrt(beta) * sigfun(X) + gamma) / (pFeLi.kc * torch.sqrt(pFeLi.lam ** 2 + 1))
+print('Simulating Trajectories...')
 
-# def dyn(t, x):
-#     return dynAffine(t, x, lambda t, x: ctrlFeLi(t, x, pFeLi, ref), pdyn_f, pdyn_g)
-
-# print('Simulating Trajectories...')
-
-# t = torch.linspace(0, Tsim, Nsim)
-# Xsim = odeint(dyn, x0, t, method='rk4')
-# AreaError = torch.zeros((Nsim, 1))
-# ihull = torch.tensor((Nsim, 1))
-# for nsim in range(Nsim):
-#     ii = torch.where(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
-#     ihull[nsim] = ii(ConvexHull(Xte[ii, :]).volume)
-#     AreaError[nsim] = torch.sum(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
+t = torch.linspace(0, Tsim, Nsim)
+Xsim = odeint(dyn, x0.float(), t)
+AreaError = torch.zeros((Nsim, 1))
+ihull = torch.tensor((Nsim, 1))
+for nsim in range(Nsim):
+    ii = torch.where(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
+    ihull[nsim] = ii(ConvexHull(Xte[ii, :]).volume)
+    AreaError[nsim] = torch.sum(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))

@@ -56,6 +56,8 @@ class FitGP():
 
 
 def gradestj(fun, x0, eps=1e-3):
+    if x0.dim() == 1:
+        x0 = x0.unsqueeze(0)
     N, E = x0.shape
 
     if N > E: # if N > E, transpose x0
