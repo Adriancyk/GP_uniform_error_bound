@@ -25,10 +25,12 @@ E = 2 # State space dimension
 
 x0 = torch.tensor([0, 0]) # Initial state
 x0 = x0.unsqueeze(0) # dim 1 x E
-ref = lambda t: refGeneral(t, E+1, lambda tau: 2*torch.sin(tau)) # Reference trajectory
+#ref = lambda t: refGeneral(t, E+1, lambda tau: 2*torch.sin(tau)) # Reference trajectory
+def ref_traj(tau):
+    return 2*torch.sin(tau)
 
-pFeli_lam = torch.ones((E-1, 1))
-pFeLi_kc = 2
+ref = lambda t: refGeneral(t, E+1, ref_traj) # Reference trajectory
+
 
 
 def pdyn_f(x):
@@ -171,26 +173,30 @@ else:
 
 class pFeli:
     def __init__(self, pdyn_f, pdyn_g):
-        self.kc = 2
-        self.lam = torch.ones((E - 1, 1))
-        self.pdyn_f = pdyn_f
-        self.pdyn_g = pdyn_g
+        self.kc = 2.
+        self.lam = 1.
+        self.f = pdyn_f
+        self.g = pdyn_g
 
 pFeLi = pFeli(pdyn_f, pdyn_g)
 
 def lyapincr(X, r, beta, gamma, pFeLi, sigfun):
     return torch.sqrt(torch.sum((X - r) ** 2, dim=1)) <= (torch.sqrt(beta) * sigfun(X) + gamma) / (pFeLi.kc * torch.sqrt(pFeLi.lam ** 2 + 1))
 
+
 def dyn(t, x):
-    return dynAffine(t, x, lambda t, x: ctrlFeLi(t, x, pFeLi, ref), pdyn_f, pdyn_g)
+    return dynAffine(t, x, ctrlFeLi, ref, pdyn_f, pdyn_g, pFeLi)
 
 print('Simulating Trajectories...')
 
 t = torch.linspace(0, Tsim, Nsim)
-Xsim = odeint(dyn, x0.float(), t)
-AreaError = torch.zeros((Nsim, 1))
-ihull = torch.tensor((Nsim, 1))
-for nsim in range(Nsim):
-    ii = torch.where(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
-    ihull[nsim] = ii(ConvexHull(Xte[ii, :]).volume)
-    AreaError[nsim] = torch.sum(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
+Xsim = odeint(dyn, x0.float(), t, method='rk4')
+with open('Xsim.txt', 'w') as f:
+    f.write(str(Xsim))
+
+# AreaError = torch.zeros((Nsim, 1))
+# ihull = torch.tensor((Nsim, 1))
+# for nsim in range(Nsim):
+#     ii = torch.where(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
+#     ihull[nsim] = ii(ConvexHull(Xte[ii, :]).volume)
+#     AreaError[nsim] = torch.sum(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))

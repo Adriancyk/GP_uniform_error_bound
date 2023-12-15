@@ -62,15 +62,34 @@ def gradestj(fun, x0, eps=1e-3):
 
     if N > E: # if N > E, transpose x0
         x0 = x0.T
-
     epsm = torch.tensor([[eps], [-eps]]).unsqueeze(2)
-    xpme = torch.tile(x0[:, :], (2, 1, 2)) + torch.kron(torch.eye(E), torch.ones((1, N))) * epsm
+    xpme = torch.tile(x0[:, :], (2, 1, E)) + torch.kron(torch.eye(E), torch.ones((1, N))) * epsm
     # dim E x E x 2N
     xpmeT = torch.transpose(xpme, 0, 1)
-
     V = fun(xpmeT.reshape(E, E * N * 2).T) # dim 4N x 1
-
     dVdx = ((V[:E * N] - V[N * E:]) / (2 * eps)).reshape(E, N) # dim E x N
+    return dVdx
+
+
+def gradestj1(fun, x0, count=0, eps=1e-3):
+    # decouple the task for original gradestj to avoid task misplaced
+    # gradestj1 is for refGeneral function
+    if count == 1:
+        def ref_traj(tau):
+            return 2*torch.sin(tau)
+        return gradestj(ref_traj, x0)
+    
+    if x0.dim() == 1:
+        x0 = x0.unsqueeze(0)
+    N, E = x0.shape
+    # if N > E: # if N > E, transpose x0
+    #     x0 = x0.T
+    epsm = torch.tensor([[eps], [-eps]]).unsqueeze(2)
+    xpme = torch.tile(x0[:, :], (2, 1, E)) + torch.kron(torch.eye(E), torch.ones((1, N))) * epsm
+    # dim E x E x 2N
+    xpmeT = torch.transpose(xpme, 0, 1)
+    V = fun(gradestj1, xpmeT.reshape(E, E * N * 2).T, count-1)
+    dVdx = ((V[:,:E * N] - V[:,N * E:]) / (2 * eps)).reshape(E, N) # dim E x N
     return dVdx
 
 
