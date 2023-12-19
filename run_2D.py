@@ -227,13 +227,29 @@ if if_plot:
 
     # Plot full trajectories
     fig, ax = plt.subplots()
-    Z = (likelihood(model(Xtes)).variance - 1e5).reshape(Ndte, Ndte)
+    Z = (likelihood(model(Xtes)).variance - 1e5).reshape(Ndte, Ndte).T
     Z = Z.detach().numpy()
-    c = ax.imshow(Z, cmap='jet_r', origin='lower', extent=[Xtes1.min(), Xtes1.max(), Xtes2.min(), Xtes2.max()])
-    fig.colorbar(c, ax=ax)
+    c = ax.imshow(Z, cmap='cool', origin='lower', extent=[Xtes1.min(), Xtes1.max(), Xtes2.min(), Xtes2.max()])
+    # fig.colorbar(c, ax=ax) # show colorbar
     ax.plot(Xsim[:, 0], Xsim[:, 1], 'b') # simulated trajectory
     ax.plot(Xd[:, 0], Xd[:, 1], 'r') # reference trajectory
     ax.plot(Xtr[:, 0], Xtr[:, 1], 'kx')
     ax.set_xlabel('x1') 
     ax.set_ylabel('x2')  
+    plt.show()
+
+    # Plot Tracking Error
+    norme = torch.norm(Xsim - Xd, dim=1)
+    plt.figure()
+    plt.xlabel('t')
+    plt.ylabel('|e| and |B|')
+    plt.semilogy(t, norme, 'b')
+    plt.semilogy(t, AreaError, 'r')
+    plt.legend(['|e|', '|B|'])
+    plt.show()
+
+    # Plot f vs fh
+    plt.figure()
+    plt.xlabel('x1')
+    plt.ylabel('x2')
     plt.show()
