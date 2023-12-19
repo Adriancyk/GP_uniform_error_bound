@@ -62,6 +62,9 @@ def gradestj(fun, x0, eps=1e-3):
 
     if N > E: # if N > E, transpose x0
         x0 = x0.T
+    if N == 1 and E > 1:
+        N, E = E, N
+    
     epsm = torch.tensor([[eps], [-eps]]).unsqueeze(2)
     xpme = torch.tile(x0[:, :], (2, 1, E)) + torch.kron(torch.eye(E), torch.ones((1, N))) * epsm
     # dim E x E x 2N
@@ -74,7 +77,7 @@ def gradestj(fun, x0, eps=1e-3):
 def gradestj1(fun, x0, count=0, eps=1e-3):
     # decouple the task for original gradestj to avoid task misplaced
     # gradestj1 is for refGeneral function
-    if count == 1:
+    if count == 1: # Exit condition
         def ref_traj(tau):
             return 2*torch.sin(tau)
         return gradestj(ref_traj, x0)
@@ -82,8 +85,11 @@ def gradestj1(fun, x0, count=0, eps=1e-3):
     if x0.dim() == 1:
         x0 = x0.unsqueeze(0)
     N, E = x0.shape
-    # if N > E: # if N > E, transpose x0
-    #     x0 = x0.T
+    if N > E: # if N > E, transpose x0
+        x0 = x0.T
+    if N == 1 and E > 1:
+        N, E = E, N
+
     epsm = torch.tensor([[eps], [-eps]]).unsqueeze(2)
     xpme = torch.tile(x0[:, :], (2, 1, E)) + torch.kron(torch.eye(E), torch.ones((1, N))) * epsm
     # dim E x E x 2N

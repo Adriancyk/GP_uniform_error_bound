@@ -3,11 +3,11 @@ import math
 import torch
 import gpytorch
 from torchdiffeq import odeint
-import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist
 from scipy.spatial import ConvexHull
 from scipy.io import loadmat
 from scipy.integrate import solve_ivp
+from shapely.geometry import Polygon
 
 from gp_utils import *
 from dyn import *
@@ -90,7 +90,6 @@ GP = FitGP(Xtr, Ytr, likelihood)
 
 print('Fitting GP...')
 model = GP.fit()
-model.eval()
 ls = model.covar_module.base_kernel.lengthscale.squeeze() # lengthscale
 sf = model.covar_module.outputscale # signal variance
 kfcn = model.covar_module
@@ -180,9 +179,13 @@ class pFeli:
 
 pFeLi = pFeli(pdyn_f, pdyn_g)
 
-def lyapincr(X, r, beta, gamma, pFeLi, sigfun):
-    return torch.sqrt(torch.sum((X - r) ** 2, dim=1)) <= (torch.sqrt(beta) * sigfun(X) + gamma) / (pFeLi.kc * torch.sqrt(pFeLi.lam ** 2 + 1))
+model.eval()
+likelihood.eval()
 
+def lyapincr(X, r, beta, gamma, pFeLi, model, likelihood):
+    with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        sigma = torch.sqrt(likelihood(model((X))).variance)
+    return torch.sqrt(torch.sum((X - r) ** 2, dim=1)) <= (torch.sqrt(beta) * sigma + gamma) / (pFeLi.kc * torch.sqrt(torch.tensor(pFeLi.lam) ** 2 + 1))
 
 def dyn(t, x):
     return dynAffine(t, x, ctrlFeLi, ref, pdyn_f, pdyn_g, pFeLi)
@@ -190,13 +193,47 @@ def dyn(t, x):
 print('Simulating Trajectories...')
 
 t = torch.linspace(0, Tsim, Nsim)
-Xsim = odeint(dyn, x0.float(), t, method='rk4')
+Xsim = odeint(dyn, x0.float(), t, method='rk4').squeeze(1)
 with open('Xsim.txt', 'w') as f:
     f.write(str(Xsim))
+Xd = ref(t).T
+Xd = Xd[:, 0:E]
+AreaError = [None]*Nsim
+ihull = [None]*Nsim
+for nsim in range(Nsim):
+    ii = torch.where(lyapincr(Xte, Xd[nsim, 0:2], beta, gamma, pFeLi, model, likelihood))
+    ii = ii[0]
+    ihull[nsim] = ii[ConvexHull(Xte[ii, :]).vertices]
+    shell = []
+    for i in ihull[nsim]:
+        shell.append((Xte[i, 0].item(), Xte[i, 1].item()))
+    AreaError[nsim] = Polygon(shell).area
+# print('AreaError: ', AreaError)
+    
+# ==================== #
+print('Plotting Results...')
+if_plot = True
 
-# AreaError = torch.zeros((Nsim, 1))
-# ihull = torch.tensor((Nsim, 1))
-# for nsim in range(Nsim):
-#     ii = torch.where(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
-#     ihull[nsim] = ii(ConvexHull(Xte[ii, :]).volume)
-#     AreaError[nsim] = torch.sum(lyapincr(Xte, Xsim[nsim, :], beta, gamma, pFeLi, pdyn_f))
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+if if_plot:
+    Nte = 1e4
+    Ndte = int(Nte**(1/E))
+    Nte = Ndte**E
+    Xtes = ndgridj(XteMin, XteMax, Ndte*torch.ones((E, 1)))
+    Xtes1 = Xte[:, 0].reshape(Ndte, Ndte)
+    Xtes2 = Xte[:, 1].reshape(Ndte, Ndte)
+
+    # Plot full trajectories
+    fig, ax = plt.subplots()
+    Z = (likelihood(model(Xtes)).variance - 1e5).reshape(Ndte, Ndte)
+    Z = Z.detach().numpy()
+    c = ax.imshow(Z, cmap='jet_r', origin='lower', extent=[Xtes1.min(), Xtes1.max(), Xtes2.min(), Xtes2.max()])
+    fig.colorbar(c, ax=ax)
+    ax.plot(Xsim[:, 0], Xsim[:, 1], 'b') # simulated trajectory
+    ax.plot(Xd[:, 0], Xd[:, 1], 'r') # reference trajectory
+    ax.plot(Xtr[:, 0], Xtr[:, 1], 'kx')
+    ax.set_xlabel('x1') 
+    ax.set_ylabel('x2')  
+    plt.show()
