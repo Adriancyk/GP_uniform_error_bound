@@ -248,8 +248,26 @@ if if_plot:
     plt.legend(['|e|', '|B|'])
     plt.show()
 
-    # Plot f vs fh
-    plt.figure()
-    plt.xlabel('x1')
-    plt.ylabel('x2')
+    # # Plot f vs fh
+    # plt.figure()
+    # plt.xlabel('x1')
+    # plt.ylabel('x2')
+    # plt.show()
+    # pass
+
+    # Animation
+    fig, ax = plt.subplots()
+    ax.set_xlabel('x1')
+    ax.set_ylabel('x2')
+    for it in range(len(t)):
+        Xhull = Xte[ihull[it], :]
+        ax.fill(Xhull[:, 0], Xhull[:, 1], 'r', alpha = 0.5)
+        ax.plot(Xsim[:it, 0], Xsim[:it, 1], 'b--')
+        ax.plot(Xd[:it, 0], Xd[:it, 1], 'r--')
+        ax.plot(Xtr[:, 0], Xtr[:, 1], 'kx')
+        ax.set_xlim(XteMin[0], XteMax[0])
+        ax.set_ylim(XteMin[1], XteMax[1])
+        plt.pause(0.1)
+        ax.cla()
     plt.show()
+    
