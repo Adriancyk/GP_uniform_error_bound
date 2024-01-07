@@ -136,7 +136,7 @@ if doing_test:
             Lkds[nte] = max(dddkdxidxpi(Xte, Xte[nte, :], e))
         Lkd = max(Lkds)
         Lfs[e] = torch.sqrt(2*torch.log(2*E/deltaL))*maxk + 12*torch.sqrt(torch.tensor(6*E))*max(maxk, torch.sqrt(r*Lkd))
-    # temp = kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr)
+    
     Lfh = torch.norm(Lfs)
     Lnu = Lk*torch.sqrt(torch.tensor(Ntr))*torch.norm((kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*Ytr)
     omega = torch.sqrt(2*tau*Lk*(1 + Ntr*torch.norm(kfcn(Xtr).evaluate()+sn**2*torch.eye(Ntr))*sf**2))
@@ -215,7 +215,6 @@ print('Plotting Results...')
 if_plot = True
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 if if_plot:
     Nte = 1e4
