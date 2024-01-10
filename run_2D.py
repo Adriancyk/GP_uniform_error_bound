@@ -6,7 +6,7 @@ from torchdiffeq import odeint
 from scipy.spatial.distance import pdist
 from scipy.spatial import ConvexHull
 from scipy.io import loadmat
-from scipy.integrate import solve_ivp
+# from scipy.integrate import solve_ivp
 from shapely.geometry import Polygon
 
 from gp_utils import *
@@ -93,8 +93,8 @@ model = GP.fit()
 ls = model.covar_module.base_kernel.lengthscale.squeeze() # lengthscale
 sf = model.covar_module.outputscale # signal variance
 kfcn = model.covar_module
-print('ls: ', ls)
-print('sf: ', sf)
+# print('ls: ', ls)
+# print('sf: ', sf)
 
 
 # ==================== #
