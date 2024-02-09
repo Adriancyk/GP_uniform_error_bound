@@ -5,5 +5,5 @@ This is a Python version for the 2D example (Robot Arm example will be released 
 ### Please process the following steps to run examples
 
 1. create a new python env using Anaconda
-   `conda env create -n <env_name> -f requirements.txt`
+   `conda env create -n <env_name> -f environment.yml`
 2. run `python run_2D.py`
